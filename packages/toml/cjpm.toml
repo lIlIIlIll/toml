@@ -1,0 +1,15 @@
+[package]
+  cjc-version = "1.1.0"
+  name = "toml"
+  organization = ""
+  description = "TOML 1.0 and 1.1 parser, document model, editor, formatter, and codecs"
+  version = "0.1.0"
+  target-dir = ""
+  script-dir = ""
+  output-type = "static"
+  compile-option = "-O2"
+  override-compile-option = ""
+  link-option = ""
+  package-configuration = {}
+
+[dependencies]

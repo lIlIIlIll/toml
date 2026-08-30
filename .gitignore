@@ -1,0 +1,10 @@
+target/
+*.cjo
+*.a
+*.so
+*.dll
+*.dylib
+coverage/
+lcov.info
+.DS_Store
+

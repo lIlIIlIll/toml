@@ -1,0 +1,17 @@
+[package]
+  cjc-version = "1.1.0"
+  name = "toml_schema_macros"
+  organization = ""
+  description = "Experimental compile-time TOML schema macros"
+  version = "0.1.0"
+  target-dir = ""
+  script-dir = ""
+  output-type = "static"
+  compile-option = ""
+  override-compile-option = ""
+  link-option = ""
+  package-configuration = {}
+
+[dependencies]
+  toml = { path = "../toml" }
+  toml_schema = { path = "../toml_schema" }
