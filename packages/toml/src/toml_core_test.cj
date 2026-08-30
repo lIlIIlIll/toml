@@ -211,4 +211,75 @@ class TomlCoreContractTests {
         let invalid: Array<Byte> = [b'a', b' ', b'=', b' ', b'\"', 0xFF, b'\"']
         @Expect(parseTomlDocument(invalid).isFatal)
     }
+
+    // T013 -> S015/S016, P010
+    @TestCase
+    func T013_applyStructuredEditsWithoutRewritingUnrelatedBytes(): Unit {
+        let original = parseTomlDocument(
+            "title = \"old\"  # keep\n[db]\nport = 5432\n").getOrThrow()
+        let title = TomlPath().withKey("title")
+        let port = TomlPath().withKey("db").withKey("port")
+        let host = TomlPath().withKey("db").withKey("host")
+
+        let session = original.beginEdit()
+        @Expect(session.replaceValue(title, TomlString("new")).isSuccess())
+        @Expect(session.renameKey(port, "server_port").isSuccess())
+        @Expect(session.insertValue(host, TomlString("localhost")).isSuccess())
+        let edited = session.commit().getOrThrow()
+        @Expect(edited.text(),
+            "title = \"new\"  # keep\n[db]\nserver_port = 5432\nhost = \"localhost\"\n")
+        @Expect(original.text(),
+            "title = \"old\"  # keep\n[db]\nport = 5432\n")
+
+        let moved = edited.beginEdit()
+        @Expect(moved.moveBefore(host,
+            TomlPath().withKey("db").withKey("server_port")).isSuccess())
+        let reordered = moved.commit().getOrThrow()
+        @Expect(reordered.text(),
+            "title = \"new\"  # keep\n[db]\nhost = \"localhost\"\nserver_port = 5432\n")
+
+        let removed = reordered.beginEdit()
+        @Expect(removed.removeValue(title).isSuccess())
+        @Expect(removed.commit().getOrThrow().text().contains("# keep\n"))
+
+        let created = parseTomlDocument("").getOrThrow().beginEdit()
+        @Expect(created.insertValue(
+            TomlPath().withKey("server").withKey("tls").withKey("enabled"),
+            TomlBoolean(true), createParents: true).isSuccess())
+        @Expect(created.commit().getOrThrow().text(),
+            "[server.tls]\nenabled = true\n")
+    }
+
+    // T014 -> S017, P010
+    @TestCase
+    func T014_formatAndLintAsPureAtomicEdits(): Unit {
+        let source = "answer=  42   \r\n# keep   \r\n"
+        let original = parseTomlDocument(source).getOrThrow()
+        let statement = original.nodes()[0]
+        @Expect(statement.child(TomlSyntaxKind.Key).getOrThrow().span, TomlSpan(0, 6))
+        @Expect(statement.child(TomlSyntaxKind.Value).getOrThrow().span, TomlSpan(9, 11))
+        let style = TomlStyle(newline: TomlNewline.CrLf)
+        let formatter = TomlFormatter(style: style)
+        let preview = formatter.preview(original).getOrThrow()
+        @Expect(preview.size, 3)
+        @Expect(original.text(), source)
+
+        let formatted = formatter.apply(original).getOrThrow()
+        @Expect(formatted.text(), "answer = 42\r\n# keep\r\n")
+        @Expect(formatted.revision, 1)
+        @Expect(original.revision, 0)
+
+        let lint = TomlLinter(style: style).lint(original)
+        @Expect(lint.hasProblems)
+        @Expect(!lint.hasErrors)
+        @Expect(lint.hasFixes)
+        @Expect(lint.fixes().size, 3)
+        let fixed = TomlLinter(style: style).applyFixes(original).getOrThrow()
+        @Expect(fixed.text(), formatted.text())
+
+        let invalid = parseTomlDocument("bad = [1 2]\n").getOrThrow()
+        let invalidLint = lintTomlDocument(invalid)
+        @Expect(invalidLint.hasErrors)
+        @Expect(!fixTomlDocument(invalid).isSuccess())
+    }
 }

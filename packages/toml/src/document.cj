@@ -519,7 +519,8 @@ private func tomlBuildDocument(
             tomlAppendTriviaNodes(bytes, cursor, statement.span.start, parsed.diagnostics, factory, children)
         }
         let statementChildren = ArrayList<TomlSyntaxNode>()
-        statementChildren.add(factory.make(TomlSyntaxKind.Key, statement.keySpan))
+        statementChildren.add(factory.make(TomlSyntaxKind.Key,
+            TomlSpan(statement.keyStart, statement.keyEnd)))
         match (statement.valueSpan) {
             case Some(valueSpan) => statementChildren.add(factory.make(TomlSyntaxKind.Value, valueSpan))
             case None => ()
@@ -530,7 +531,8 @@ private func tomlBuildDocument(
             case TomlParsedStatementKind.ArrayTableHeader => TomlSyntaxKind.ArrayTableHeader
         }
         let path = tomlPathFromKeys(statement.path)
-        children.add(factory.make(kind, statement.span, children: statementChildren, path: Some(path)))
+        children.add(factory.make(kind, statement.span,
+            children: statementChildren, path: Some(path)))
         cursor = statement.span.end
     }
     if (cursor < bytes.size) {

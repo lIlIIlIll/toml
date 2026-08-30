@@ -319,7 +319,7 @@ private func tomlPathFromKeys(keys: Collection<String>): TomlPath {
     path
 }
 
-private func tomlRenderKeyPath(keys: Collection<String>): String {
+func tomlRenderKeyPath(keys: Collection<String>): String {
     let out = StringBuilder()
     var first = true
     for (key in keys) {
@@ -330,7 +330,7 @@ private func tomlRenderKeyPath(keys: Collection<String>): String {
     out.toString()
 }
 
-private func tomlRenderKey(key: String): String {
+func tomlRenderKey(key: String): String {
     if (!key.isEmpty()) {
         var bare = true
         unsafe {

@@ -12,20 +12,23 @@ enum TomlParsedStatementKind {
 class TomlParsedStatement {
     let kind: TomlParsedStatementKind
     let span: TomlSpan
-    let keySpan: TomlSpan
+    let keyStart: Int64
+    let keyEnd: Int64
     let valueSpan: Option<TomlSpan>
     let path: ArrayList<String>
 
     init(
         kind: TomlParsedStatementKind,
         span: TomlSpan,
-        keySpan: TomlSpan,
+        parsedKeyStart: Int64,
+        parsedKeyEnd: Int64,
         valueSpan: Option<TomlSpan>,
         path: Collection<String>
     ) {
         this.kind = kind
         this.span = span
-        this.keySpan = keySpan
+        this.keyStart = parsedKeyStart
+        this.keyEnd = parsedKeyEnd
         this.valueSpan = valueSpan
         this.path = ArrayList<String>(path)
     }
@@ -271,7 +274,7 @@ class TomlParserState {
                         let kind = if (arrayHeader) { TomlParsedStatementKind.ArrayTableHeader }
                             else { TomlParsedStatementKind.TableHeader }
                         statements.add(TomlParsedStatement(kind, TomlSpan(statementStart, index),
-                            TomlSpan(keyStart, keyEnd), None<TomlSpan>, segments))
+                            keyStart, keyEnd, None<TomlSpan>, segments))
                     case None => ()
                 }
             case None => ()
@@ -302,7 +305,7 @@ class TomlParserState {
                     let fullPath = currentPath.clone()
                     fullPath.add(all: segments)
                     statements.add(TomlParsedStatement(TomlParsedStatementKind.KeyValue,
-                        TomlSpan(statementStart, valueEnd), TomlSpan(keyStart, keyEnd),
+                        TomlSpan(statementStart, valueEnd), keyStart, keyEnd,
                         Some(TomlSpan(valueStart, valueEnd)), fullPath))
                 }
             case _ => ()

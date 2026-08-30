@@ -95,6 +95,8 @@ public class TomlStyle {
     }
 
     public static let readable: TomlStyle = TomlStyle()
+    public static let canonical: TomlStyle = TomlStyle(indent: "  ", maxWidth: 80,
+        newline: TomlNewline.Lf, finalNewline: true)
 }
 
 public class TomlEncodeOptions {
