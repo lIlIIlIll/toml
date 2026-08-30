@@ -80,6 +80,24 @@ public class Toml {
     public static func parse(input: InputStream, options!: TomlParseOptions = TomlParseOptions.defaults): TomlOutcome<TomlTable> {
         parseToml(input, options: options)
     }
+
+    public static func decode<T>(
+        text: String,
+        codec: TomlDecode<T>,
+        parseOptions!: TomlParseOptions = TomlParseOptions.defaults,
+        codecOptions!: TomlCodecOptions = TomlCodecOptions.defaults
+    ): TomlOutcome<T> {
+        decodeTomlWith(text, codec, parseOptions: parseOptions, codecOptions: codecOptions)
+    }
+
+    public static func encode<T>(
+        value: T,
+        codec: TomlEncode<T>,
+        codecOptions!: TomlCodecOptions = TomlCodecOptions.defaults,
+        encodeOptions!: TomlEncodeOptions = TomlEncodeOptions.defaults
+    ): TomlOutcome<String> {
+        encodeTomlWith(value, codec, codecOptions: codecOptions, encodeOptions: encodeOptions)
+    }
 }
 
 func tomlParseInternal(bytes: Array<Byte>, options: TomlParseOptions): TomlInternalParseResult {

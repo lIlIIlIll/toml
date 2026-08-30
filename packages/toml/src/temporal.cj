@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 package toml
 
+import std.collection.*
+import std.convert.Parsable
+import std.time.*
+
 public class TomlLocalDate <: TomlValue & Equatable<TomlLocalDate> {
     public let year: Int64
     public let month: Int64
@@ -119,12 +123,84 @@ public class TomlOffsetDateTime <: TomlValue & Equatable<TomlOffsetDateTime> {
         tomlEpochSecond(this) == tomlEpochSecond(other) && local.time.fraction == other.local.time.fraction
     }
 
+    /// Converts to std.time.DateTime without silently truncating exact TOML
+    /// fractions. DateTime supports at most nanosecond precision.
+    public func toDateTime(): TomlOutcome<DateTime> {
+        if (local.time.fraction.size > 9) {
+            let diagnostics = ArrayList<TomlDiagnostic>()
+            diagnostics.add(TomlDiagnostic("datetime_precision_loss", TomlSeverity.Error,
+                "std.time.DateTime cannot represent more than 9 fractional digits"))
+            return TomlOutcome<DateTime>.Failure(diagnostics)
+        }
+        var fraction = local.time.fraction
+        while (fraction.size < 9) { fraction += "0" }
+        let nanos = if (fraction.isEmpty()) { 0 } else { Int64.parse(fraction) }
+        try {
+            let zone = TimeZone(tomlOffsetZoneId(offsetMinutes), Duration.minute * offsetMinutes)
+            let value = DateTime.of(
+                year: local.date.year,
+                month: local.date.month,
+                dayOfMonth: local.date.day,
+                hour: local.time.hour,
+                minute: local.time.minute,
+                second: local.time.second,
+                nanosecond: nanos,
+                timeZone: zone
+            )
+            TomlOutcome<DateTime>.Success(value, ArrayList<TomlDiagnostic>())
+        } catch (exception: Exception) {
+            let diagnostics = ArrayList<TomlDiagnostic>()
+            diagnostics.add(TomlDiagnostic("datetime_out_of_range", TomlSeverity.Error,
+                "cannot convert TOML offset date-time to DateTime: ${exception.message}"))
+            TomlOutcome<DateTime>.Failure(diagnostics)
+        }
+    }
+
+    public static func fromDateTime(value: DateTime): TomlOutcome<TomlOffsetDateTime> {
+        let offsetSeconds = value.zoneOffset.toSeconds()
+        if (offsetSeconds % 60 != 0) {
+            let diagnostics = ArrayList<TomlDiagnostic>()
+            diagnostics.add(TomlDiagnostic("datetime_offset_precision", TomlSeverity.Error,
+                "TOML offsets have minute precision but DateTime has a sub-minute zone offset"))
+            return TomlOutcome<TomlOffsetDateTime>.Failure(diagnostics)
+        }
+        if (value.year < 0 || value.year > 9999) {
+            let diagnostics = ArrayList<TomlDiagnostic>()
+            diagnostics.add(TomlDiagnostic("datetime_out_of_range", TomlSeverity.Error,
+                "TOML date years must be between 0000 and 9999"))
+            return TomlOutcome<TomlOffsetDateTime>.Failure(diagnostics)
+        }
+        var fraction = tomlNineDigits(value.nanosecond)
+        while (fraction.endsWith("0")) { fraction = fraction[0..fraction.size - 1] }
+        let localDate = TomlLocalDate(value.year, value.month.toInteger(), value.dayOfMonth)
+        let localTime = TomlLocalTime(value.hour, value.minute, second: value.second, fraction: fraction)
+        TomlOutcome<TomlOffsetDateTime>.Success(
+            TomlOffsetDateTime(TomlLocalDateTime(localDate, localTime), offsetSeconds / 60),
+            ArrayList<TomlDiagnostic>()
+        )
+    }
+
     public func toString(): String {
         if (offsetMinutes == 0) { return "${local}Z" }
         let sign = if (offsetMinutes < 0) { "-" } else { "+" }
         let magnitude = if (offsetMinutes < 0) { -offsetMinutes } else { offsetMinutes }
         "${local}${sign}${tomlTwoDigits(magnitude / 60)}:${tomlTwoDigits(magnitude % 60)}"
     }
+}
+
+private func tomlOffsetZoneId(offsetMinutes: Int64): String {
+    if (offsetMinutes == 0) { return "UTC" }
+    let sign = if (offsetMinutes < 0) { "-" } else { "+" }
+    let absolute = if (offsetMinutes < 0) { -offsetMinutes } else { offsetMinutes }
+    "TOML${sign}${tomlTwoDigits(absolute / 60)}:${tomlTwoDigits(absolute % 60)}"
+}
+
+private func tomlNineDigits(value: Int64): String {
+    let text = value.toString()
+    let output = StringBuilder()
+    for (_ in 0..(9 - text.size)) { output.append("0") }
+    output.append(text)
+    output.toString()
 }
 
 private func tomlIsLeapYear(year: Int64): Bool {
