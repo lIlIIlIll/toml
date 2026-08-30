@@ -156,4 +156,59 @@ class TomlCoreContractTests {
         @Expect(!encoded.isSuccess())
         @Expect(testHasDiagnostic(encoded.diagnostics(), "integer_out_of_range"))
     }
+
+    // T010 -> S013, P010
+    @TestCase
+    func T010_preserveBytesRevisionAndReusedNodeIds(): Unit {
+        let original = parseTomlDocument("a = 1\nb = 2\n").getOrThrow()
+        let originalNodes = original.nodes()
+        @Expect(original.revision, 0)
+        @Expect(original.sourceBytes(), tomlCloneStringBytes("a = 1\nb = 2\n"))
+
+        let first = originalNodes[0]
+        let second = originalNodes[2]
+        @Expect(first.kind, TomlSyntaxKind.KeyValue)
+        @Expect(second.kind, TomlSyntaxKind.KeyValue)
+        let firstHandle = original.handle(first)
+        let secondHandle = original.handle(second)
+
+        let edited = original.beginEdit().replace(TomlSpan(10, 11), "20").commit().getOrThrow()
+        @Expect(edited.revision, 1)
+        @Expect(edited.sourceBytes(), tomlCloneStringBytes("a = 1\nb = 20\n"))
+        @Expect(original.sourceBytes(), tomlCloneStringBytes("a = 1\nb = 2\n"))
+
+        let relocatedFirst = edited.relocate(firstHandle)
+        @Expect(relocatedFirst.isSome())
+        @Expect(edited.resolve(relocatedFirst.getOrThrow()).getOrThrow().id, first.id)
+        @Expect(edited.relocate(secondHandle).isNone())
+        @Expect(edited.resolve(firstHandle).isNone())
+        @Expect(edited.semantic().getOrThrow()["b"].asInteger().value, BigInt(20))
+    }
+
+    // T011 -> S014, P010
+    @TestCase
+    func T011_rejectOverlappingAndStaleEditsAtomically(): Unit {
+        let original = parseTomlDocument("answer = 42\n").getOrThrow()
+        let overlap = TomlEditBatch(original.revision)
+            .replace(TomlSpan(0, 2), "x")
+            .replace(TomlSpan(1, 3), "y")
+        let rejected = original.apply(overlap)
+        @Expect(!rejected.isSuccess())
+        @Expect(testHasDiagnostic(rejected.diagnostics(), "overlapping_edits"))
+        @Expect(original.text(), "answer = 42\n")
+
+        let next = original.beginEdit().insert(original.byteLength, "# retained\n").commit().getOrThrow()
+        let stale = next.apply(TomlEditBatch(original.revision).insert(0, "# stale\n"))
+        @Expect(!stale.isSuccess())
+        @Expect(testHasDiagnostic(stale.diagnostics(), "stale_revision"))
+        @Expect(next.text(), "answer = 42\n# retained\n")
+
+        let recovered = parseTomlDocument("bad = [1 2]\ngood = 3\n")
+        @Expect(recovered.hasDocument)
+        @Expect(recovered.hasErrors)
+        @Expect(!recovered.getOrThrow().semantic().isSuccess())
+
+        let invalid: Array<Byte> = [b'a', b' ', b'=', b' ', b'\"', 0xFF, b'\"']
+        @Expect(parseTomlDocument(invalid).isFatal)
+    }
 }
