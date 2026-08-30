@@ -2,6 +2,7 @@
 package toml
 
 import std.collection.*
+import std.convert.Formattable
 import std.io.*
 import std.math.numeric.BigInt
 
@@ -384,7 +385,7 @@ private func tomlHexFixed(value: UInt32, width: Int64): String {
 private func tomlRenderFloat(value: Float64): String {
     if (value.isNaN()) { return "nan" }
     if (value.isInf()) { return if (value < 0.0) { "-inf" } else { "inf" } }
-    let text = value.toString()
+    let text = value.format(".17g")
     var hasMarker = false
     unsafe {
         for (byte in text.rawData()) {

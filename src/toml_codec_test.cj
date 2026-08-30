@@ -48,7 +48,7 @@ enum TestCodecMode {
 
 @Test
 class TomlCodecContractTests {
-    // T012 -> S015, P011
+    // T012 -> S012, P011
     @TestCase
     func T012_manualAndGeneratedCodecsAggregateOrderedErrors(): Unit {
         let manual = TomlCodecs.array(TomlCodecs.int64)

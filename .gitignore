@@ -1,10 +1,20 @@
+# Cangjie build output
 target/
-*.cjo
-*.a
-*.so
-*.dll
-*.dylib
-coverage/
-lcov.info
-.DS_Store
+**/target/
 
+# Coverage output
+coverage_out/
+*.gcda
+*.gcno
+*.gcov
+*.lcov
+__pycache__/
+*.pyc
+
+# Local editor and operating-system files
+.DS_Store
+*.swp
+*.swo
+
+# Tracked generated contract (overrides user-level *.txt ignores)
+!api/public-api.txt

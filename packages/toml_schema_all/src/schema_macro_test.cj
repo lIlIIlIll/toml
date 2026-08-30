@@ -62,7 +62,7 @@ private func macroSchemaHasDiagnostic(
 
 @Test
 class TomlSchemaMacroContractTests {
-    // T018 -> S023
+    // T018 -> S018, P013
     @TestCase
     func T018_generateStaticRecordAndEnumSchemas(): Unit {
         let declared = TestServiceSchemaConfig(8080, None<String>,

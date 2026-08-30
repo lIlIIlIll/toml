@@ -4,6 +4,7 @@ package toml
 import std.collection.*
 import std.convert.Parsable
 import std.math.numeric.BigInt
+import std.math.numeric.Decimal
 
 enum TomlParsedStatementKind {
     KeyValue | TableHeader | ArrayTableHeader
@@ -186,7 +187,7 @@ class TomlParserState {
 
     private func skipComment(): Unit {
         while (!atEnd() && peek() != b'\n' && peek() != b'\r') {
-            if (peek() < 0x20 && peek() != b'\t') {
+            if ((peek() < 0x20 && peek() != b'\t') || peek() == 0x7F) {
                 error("control_character", "control characters are not allowed in comments", TomlSpan(index, index + 1))
             }
             index++
@@ -493,13 +494,14 @@ class TomlParserState {
             match (owner.get(key)) {
                 case None =>
                     let child = TomlTable(inline: inlineContext)
-                    child.parserDefinitionState = if (inlineContext) { 4 } else { 3 }
+                    child.parserDefinitionState = 3
                     owner.put(key, child)
                     countNode(span)
                     owner = child
                 case Some(child: TomlTable) =>
-                    if (!inlineContext && child.parserDefinitionState == 4) {
-                        error("inline_table_sealed", "inline table '${key}' cannot be extended", span,
+                    if (child.parserDefinitionState == 2 || child.parserDefinitionState == 4) {
+                        error("dotted_key_redefines_table",
+                            "dotted key cannot extend previously defined table '${key}'", span,
                             path: Some(pathFor(segments)))
                         return false
                     }
@@ -954,8 +956,10 @@ class TomlParserState {
         let raw = unsafe { token.rawData() }
         var cursor: Int64 = 0
         var sign: Byte = b'+'
+        var hasSign = false
         if (cursor < raw.size && (raw[cursor] == b'+' || raw[cursor] == b'-')) {
             sign = raw[cursor]
+            hasSign = true
             cursor++
         }
         if (cursor >= raw.size) {
@@ -973,6 +977,10 @@ class TomlParserState {
         }
         if (cursor >= raw.size) {
             error("invalid_integer", "base-prefixed integer has no digits", span)
+            return None<TomlValue>
+        }
+        if (radix != 10 && hasSign) {
+            error("signed_base_integer", "base-prefixed integers cannot have a sign", span)
             return None<TomlValue>
         }
         let cleaned = StringBuilder()
@@ -1046,7 +1054,12 @@ class TomlParserState {
             return None<TomlValue>
         }
         try {
-            Some(TomlFloat(Float64.parse(cleaned)))
+            let value = Decimal.parse(cleaned).toFloat64()
+            if (value.isInf()) {
+                error("invalid_float", "floating-point value is outside the Float64 range", span)
+                return None<TomlValue>
+            }
+            Some(TomlFloat(value))
         } catch (_: Exception) {
             error("invalid_float", "floating-point value cannot be represented as Float64", span)
             None<TomlValue>
@@ -1219,7 +1232,14 @@ private func tomlTokenLooksFloat(token: String): Bool {
     if (token == "inf" || token == "+inf" || token == "-inf" ||
         token == "nan" || token == "+nan" || token == "-nan") { return true }
     unsafe {
-        for (byte in token.rawData()) {
+        let raw = token.rawData()
+        var cursor: Int64 = 0
+        if (cursor < raw.size && (raw[cursor] == b'+' || raw[cursor] == b'-')) { cursor++ }
+        if (cursor + 1 < raw.size && raw[cursor] == b'0' &&
+            (raw[cursor + 1] == b'x' || raw[cursor + 1] == b'o' || raw[cursor + 1] == b'b')) {
+            return false
+        }
+        for (byte in raw) {
             if (byte == b'.' || byte == b'e' || byte == b'E') { return true }
         }
     }

@@ -109,11 +109,13 @@ public interface TomlObjectCodec<T> <: TomlCodec<T> {
     ): TomlOutcome<T>
 }
 
-/// Type-erased bridge used only by explicit, statically declared providers.
-public interface TomlAnyCodec {
-    func encodeAny(value: Any, context: TomlEncodeContext): TomlOutcome<TomlValue>
-    func decodeAny(value: TomlValue, context: TomlDecodeContext): TomlOutcome<Any>
-}
+/// Opaque type-erased handle used only by explicit, statically declared providers.
+///
+/// The handle intentionally has no public dynamic encode/decode operations:
+/// Cangjie 1.1 cannot safely downcast an arbitrary `Any` to a cross-package
+/// generic type on every supported backend. Use `tomlCodecOf<T>()` to recover
+/// the statically typed codec.
+sealed abstract class TomlAnyCodec {}
 
 /// A type can opt into its generated or manually supplied codec. There is no
 /// process-wide registry and therefore no initialization-order dependency.
@@ -126,45 +128,7 @@ private class ErasedTomlCodec<T> <: TomlAnyCodec {
 
     init(codec: TomlCodec<T>) { this.codec = codec }
 
-    public func encodeAny(value: Any, context: TomlEncodeContext): TomlOutcome<TomlValue> {
-        match (value) {
-            case typed: T => codec.encode(typed, context)
-            case _ => tomlCodecFailure<TomlValue>("codec_type_mismatch",
-                "codec value type does not match its declared type", context.path)
-        }
-    }
-
-    public func decodeAny(value: TomlValue, context: TomlDecodeContext): TomlOutcome<Any> {
-        match (codec.decode(value, context)) {
-            case TomlOutcome<T>.Success(decoded, diagnostics) =>
-                TomlOutcome<Any>.Success(decoded, diagnostics)
-            case TomlOutcome<T>.Failure(diagnostics) => TomlOutcome<Any>.Failure(diagnostics)
-        }
-    }
-
     func typed(): TomlCodec<T> { codec }
-}
-
-private class ReifiedTomlCodec<T> <: TomlCodec<T> {
-    private let codec: TomlAnyCodec
-
-    init(codec: TomlAnyCodec) { this.codec = codec }
-
-    public func encode(value: T, context: TomlEncodeContext): TomlOutcome<TomlValue> {
-        codec.encodeAny(value, context)
-    }
-
-    public func decode(value: TomlValue, context: TomlDecodeContext): TomlOutcome<T> {
-        match (codec.decodeAny(value, context)) {
-            case TomlOutcome<Any>.Success(decoded, diagnostics) =>
-                match (decoded) {
-                    case typed: T => TomlOutcome<T>.Success(typed, diagnostics)
-                    case _ => tomlCodecFailure<T>("codec_type_mismatch",
-                        "decoded value does not match its declared type", context.path)
-                }
-            case TomlOutcome<Any>.Failure(diagnostics) => TomlOutcome<T>.Failure(diagnostics)
-        }
-    }
 }
 
 public func eraseTomlCodec<T>(codec: TomlCodec<T>): TomlAnyCodec { ErasedTomlCodec(codec) }
@@ -173,7 +137,8 @@ public func tomlCodecOf<T>(): TomlCodec<T> where T <: TomlCodecProvider {
     let erased = T.tomlCodec()
     match (erased) {
         case typed: ErasedTomlCodec<T> => typed.typed()
-        case _ => ReifiedTomlCodec<T>(erased)
+        case _ => throw IllegalArgumentException(
+            "TomlCodecProvider returned a codec for a different type")
     }
 }
 

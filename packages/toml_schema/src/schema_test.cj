@@ -15,7 +15,7 @@ private func schemaHasDiagnostic(diagnostics: Collection<TomlDiagnostic>, code: 
 
 @Test
 class TomlSchemaContractTests {
-    // T015 -> S018/S019
+    // T015 -> S015, P013
     @TestCase
     func T015_validateProgrammaticConstraintsAndDetachedDefaults(): Unit {
         let tags = TomlSchema.array(TomlSchema.string())
@@ -48,7 +48,7 @@ class TomlSchemaContractTests {
         @Expect(schemaHasDiagnostic(outOfRange.diagnostics(), "schema_maximum"))
     }
 
-    // T016 -> S020/S021
+    // T016 -> S016, P013
     @TestCase
     func T016_validateArraysCombinatorsReferencesAndBudgets(): Unit {
         let arraySchema = TomlSchema.array(TomlSchema.integer()
@@ -85,7 +85,7 @@ class TomlSchemaContractTests {
         @Expect(schemaHasDiagnostic(limited.diagnostics(), "schema_budget_exceeded"))
     }
 
-    // T017 -> S022
+    // T017 -> S017, P013
     @TestCase
     func T017_parseTomlNativeSchemaAndRejectRemoteReferences(): Unit {
         let schemaSource = """
@@ -121,5 +121,18 @@ class TomlSchemaContractTests {
         let rejected = TomlSchemaDocument.fromToml(remote)
         @Expect(!rejected.isSuccess())
         @Expect(schemaHasDiagnostic(rejected.diagnostics(), "schema_invalid_reference"))
+    }
+
+    // T021 -> S021, P013
+    @TestCase
+    func T021_emptySchemaRegistriesAreFresh(): Unit {
+        let first = TomlSchemaRegistry.empty().register("private", TomlSchema.string())
+        let second = TomlSchemaRegistry.empty()
+        @Expect(first.contains("private"))
+        @Expect(!second.contains("private"))
+
+        let unresolved = validateTomlSchema(TomlSchema.reference("private"), TomlString("value"))
+        @Expect(!unresolved.isValid)
+        @Expect(schemaHasDiagnostic(unresolved.diagnostics(), "schema_unknown_reference"))
     }
 }

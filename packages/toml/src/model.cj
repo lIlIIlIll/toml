@@ -2,6 +2,7 @@
 package toml
 
 import std.collection.*
+import std.convert.Formattable
 import std.math.numeric.BigInt
 
 public enum TomlKind {
@@ -99,7 +100,7 @@ public class TomlFloat <: TomlValue {
     public func toString(): String {
         if (value.isNaN()) { return "nan" }
         if (value.isInf()) { return if (value < 0.0) { "-inf" } else { "inf" } }
-        value.toString()
+        value.format(".17g")
     }
 }
 

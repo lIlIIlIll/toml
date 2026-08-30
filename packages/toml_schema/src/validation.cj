@@ -47,7 +47,7 @@ private class TomlSchemaState {
 public func validateTomlSchema(
     schema: TomlSchema,
     value: TomlValue,
-    registry!: TomlSchemaRegistry = TomlSchemaRegistry.empty,
+    registry!: TomlSchemaRegistry = TomlSchemaRegistry.empty(),
     options!: TomlSchemaOptions = TomlSchemaOptions.defaults
 ): TomlSchemaValidation {
     let state = TomlSchemaState(options.limits)
@@ -328,7 +328,7 @@ private func tomlValidateSchemaTable(
 public func applyTomlSchemaDefaults(
     schema: TomlSchema,
     value: TomlValue,
-    registry!: TomlSchemaRegistry = TomlSchemaRegistry.empty,
+    registry!: TomlSchemaRegistry = TomlSchemaRegistry.empty(),
     options!: TomlSchemaOptions = TomlSchemaOptions.defaults
 ): TomlOutcome<TomlValue> {
     try {

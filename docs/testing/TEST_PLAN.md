@@ -1,89 +1,116 @@
 # TOML test scenario plan
 
-This matrix tests only public APIs and user-observable behavior. TOML 1.0.0,
-TOML 1.1.0, and the pinned `toml-test` suite are the normative specifications.
+This matrix is organized around public APIs and observable behavior. TOML
+1.0.0, TOML 1.1.0, and the pinned `toml-test` v2.2.0 suite are the normative
+syntax references.
 
-## Semantics and side effects
+## Behavioral contracts
 
-`TomlParser` accepts `String`, UTF-8 bytes, or a caller-owned `InputStream` and
-returns `TomlOutcome<TomlTable>`. It does not close streams. Errors cause
-semantic parsing to fail and preserve diagnostics. `TomlEncoder` accepts a
-root table, returns deterministic text, and neither flushes nor closes a
-caller-owned `OutputStream`. Mutable value containers reject cycles.
+- `TomlParser` accepts `String`, UTF-8 bytes, or a caller-owned `InputStream`.
+  It does not close the stream. Any error diagnostic makes semantic parsing
+  fail.
+- `TomlDocumentParser` returns a recovered document unless UTF-8 or resource
+  processing is fatal. `semantic()` still fails while errors remain.
+- `TomlEncoder` is deterministic for fixed order/options. `encodeTo` neither
+  flushes nor closes a caller-owned `OutputStream`.
+- Semantic containers reject cycles. Documents are immutable revisions, and
+  edit batches are atomic.
+- Manual and generated codecs use the same typed contracts. The generated path
+  performs no runtime field discovery.
+- Schema validation and default application are isolated in optional packages;
+  defaults are applied to detached copies.
 
-## Control-flow path matrix
+## Control-flow paths
 
-| Path ID | Conditions and values | Runtime checks | Reachability | Notes |
-|---|---|---|---|---|
-| P001 | Valid scalar, collection, table, or AoT | bounds and UTF-8 decode | reachable | normal parse |
-| P002 | Invalid UTF-8 with Reject or ReplaceInvalid | UTF-8 state machine | reachable | fatal vs warning |
-| P003 | Syntax error followed by another statement | bounds and recovery cursor | reachable | diagnostics retained |
-| P004 | TOML 1.0 versus 1.1-only syntax | version branch | reachable | explicit mode |
-| P005 | Input, depth, key, token, node, or diagnostic limit crossed | resource counters | reachable | fail closed |
-| P006 | Duplicate key/table, dotted-key conflict, sealed inline table | map membership/type match | reachable | semantic error |
-| P007 | Encode scalar, array, inline table, child table, or AoT | graph depth and value kind | reachable | stable order |
-| P008 | Encode cycle, nonportable integer, or stream failure | identity/range/IO | reachable | structured failure |
-| P009 | Freeze, thaw, deep copy, semantic equality, ordered equality | graph walk | reachable | no alias mutation |
-| P010 | Document parse and raw/incremental edit | span and revision checks | planned | 0.2 |
-| P011 | Codec/manual/generated mapping | provider and field checks | planned | 0.3 |
-| P012 | Edit transaction, format, lint, schema | state machine and constraints | planned | 0.4-0.5 |
+| Path | Surface | Important branches |
+|---|---|---|
+| P001 | semantic parse | scalar, array, table, AoT, temporal, numeric |
+| P002 | UTF-8 | reject, replacement warning, BOM policy |
+| P003 | syntax recovery | malformed statement, later valid statement, stable diagnostics |
+| P004 | version mode | TOML 1.0 versus 1.1-only syntax |
+| P005 | resource policy | input, depth, key, diagnostic, token, node limits |
+| P006 | semantic conflicts | duplicate key/table, dotted-key conflict, sealed inline table |
+| P007 | encode | scalar, fragment, table, child table, AoT, style/version |
+| P008 | encode/runtime errors | cycle, range, invalid AoT, unsupported value, stream failure |
+| P009 | value isolation | deep copy, freeze/thaw, semantic/order equality |
+| P010 | document/edit | spans, revisions, ID reuse, raw and structured transactions |
+| P011 | codec | built-ins, collections, provider, generated/manual, policies |
+| P012 | tooling | formatter preview/apply, lint diagnostics/fixes |
+| P013 | schema | constraints, defaults, refs, parser, macros, budgets |
+| P014 | hardening | fixed-seed properties and deterministic byte mutation |
+| P015 | stream lifecycle | EOF, partial reads, read/write failure, no implicit flush |
 
-## Input-domain partitioning
+## Input partitions
 
-- Strings: empty quoted keys, ASCII, Unicode, escapes, multiline, controls,
-  invalid bytes, CRLF, and unterminated delimiters.
-- Integers: every radix, signs, underscores, leading zeroes, Int64 boundaries,
-  and arbitrary-precision opt-in.
-- Floats: fraction/exponent, signed zero, infinities, NaNs, malformed separators.
-- Temporal values: four kinds, leap days, omitted seconds in 1.1, offsets, and
-  arbitrary exact fractions.
-- Collections: empty, singleton, nested, trailing comma, mixed values, and
-  depth/resource boundaries.
+- Strings and keys: empty quoted keys, ASCII, Unicode, every escape family,
+  multiline values, controls, CRLF, quote runs, and unterminated delimiters.
+- Integers and floats: every radix, sign, underscore positions, leading zeroes,
+  signed base rejection, Int64 boundaries, arbitrary precision, exponent,
+  infinities, NaNs, signed zero, malformed separators, and range overflow.
+- Temporal values: all four TOML kinds, leap days, omitted seconds in 1.1,
+  offsets, exact fractions, and `DateTime` precision boundaries.
+- Collections: empty, singleton, mixed, nested, trailing comma, AoT, duplicate
+  values, and depth limits.
 - Tables: quoted/dotted keys, implicit parents, duplicate definitions, AoT
-  parents, inline sealing, and insertion order.
+  parents, inline sealing, insertion order, and structured-edit ambiguity.
+- Schema: every supported keyword, wrong keyword type, unknown keyword/type,
+  combinator cardinality, local/remote references, cycles, and budgets.
 
-## Semantic scenario matrix
+## Scenario matrix
 
-| Scenario ID | Input | Pre-state | Triggered path IDs | Expected behavior | Required assertions | Type | Priority |
-|---|---|---|---|---|---|---|---|
-| S001 | representative valid TOML 1.1 document | fresh parser | P001 | semantic tree produced | exact kinds, values, and key order | normal | P0 |
-| S002 | TOML 1.0 and 1.1-only escapes/time/inline syntax | two parser modes | P004 | 1.1 accepts and 1.0 rejects | outcome and diagnostic code | boundary | P0 |
-| S003 | malformed statement then valid statement | fresh parser/document | P003 | semantic result fails; document later recovers | diagnostics and recovered node | error | P0 |
-| S004 | invalid byte sequence | both UTF-8 policies | P002 | Reject is fatal; replacement warns | outcome, severity, span | error | P0 |
-| S005 | duplicate/conflicting table definitions | fresh parser | P006 | reject with path-aware error | stable code and path | error | P0 |
-| S006 | Int64 edges and one larger value | default/arbitrary modes | P001,P005 | default rejects overflow; opt-in preserves BigInt | exact integer | boundary | P0 |
-| S007 | semantic tree with tables and AoT | fresh encoder | P007 | readable deterministic TOML | exact output and parse roundtrip | normal | P0 |
-| S008 | NaN, signed zero, table order variants | two trees | P009 | semantic equality follows contract | equivalentTo and sameOrder | boundary | P1 |
-| S009 | attach ancestor; encode over-limit integer | mutable graph/default encoder | P008 | mutation/encoding rejected | exception or diagnostic code | error | P0 |
-| S010 | caller-owned streams | open streams | P001,P007,P008 | read/write without close/flush | bytes and lifecycle counters | lifecycle | P1 |
-| S011 | default limits and explicit small limits | fresh parser | P005 | resource failure is deterministic | failure and limit code | error | P1 |
-| S012 | freeze then thaw and mutate | mutable source | P009 | snapshots remain independent | values before/after mutation | state | P1 |
-| S013 | raw document plus non-overlapping edit batch | revision N | P010 | unchanged bytes preserved and revision advances | exact bytes, IDs, revision | state | P0 |
-| S014 | overlapping/stale edits | revision mismatch | P010 | atomic rejection, no mutation | diagnostic and original bytes | error | P0 |
-| S015 | manual and generated codecs | configured policies | P011 | aggregate ordered errors | values, paths, diagnostic order | normal,error | P0 |
-| S016 | formatter/linter/schema | valid and invalid documents | P012 | pure preview/fixes/default application | edits, no implicit mutation | normal,error | P1 |
+| Scenario | Behavior | Paths | Priority |
+|---|---|---|---|
+| S001 | representative TOML 1.1 semantic document and order | P001 | P0 |
+| S002 | explicit TOML 1.0/1.1 split | P004 | P0 |
+| S003 | recovery, duplicates, and path-aware errors | P003,P006 | P0 |
+| S004 | invalid UTF-8 policy and byte span | P002 | P0 |
+| S005 | BigInt/Int64 and resource boundaries | P001,P005 | P0 |
+| S006 | deterministic semantic encode and round trip | P007 | P0 |
+| S007 | NaN/order equality and frozen isolation | P009 | P1 |
+| S008 | graph cycles and nonportable encoding | P008 | P0 |
+| S009 | caller-owned streams and I/O failures | P001,P008,P015 | P0 |
+| S010 | source bytes, revision, handles, and reused node IDs | P010 | P0 |
+| S011 | overlapping, invalid, and stale edits reject atomically | P010 | P0 |
+| S012 | manual and generated record/enum codecs | P011 | P0 |
+| S013 | replace/insert/upsert/remove/rename/move structured edits | P010 | P0 |
+| S014 | pure formatter/linter preview and atomic fixes | P010,P012 | P1 |
+| S015 | programmatic schema constraints and detached defaults | P013 | P0 |
+| S016 | schema arrays, combinators, references, and budgets | P013 | P0 |
+| S017 | TOML-native schema and remote-reference rejection | P013 | P0 |
+| S018 | generated record, enum, and generic schemas | P013 | P1 |
+| S019 | 128 fixed-seed semantic round trips | P001,P007,P014 | P1 |
+| S020 | per-byte mutation smoke and resource budgets | P002,P005,P014 | P1 |
+| S021 | fresh schema registries and unresolved references | P013 | P0 |
+| S022 | conformance regressions for numbers/comments/dotted keys | P001,P003,P007 | P0 |
+| S023 | every built-in scalar and temporal codec | P011 | P0 |
+| S024 | collection codec aggregation, fail-fast, and depth | P011 | P0 |
+| S025 | document wrappers, providers, support ABI, type boundary | P011 | P0 |
 
-## Test-plan matrix
+## Test traceability
 
-| Test ID | Scenario IDs | Path IDs | Input | Expected result | Assertions | Type |
-|---|---|---|---|---|---|---|
-| T001 | S001 | P001 | scalar/table/AoT fixture | success | all public values and order equal | minimal |
-| T002 | S002 | P004 | 1.1 escapes and omitted seconds | mode split | success/failure plus code | boundary |
-| T003 | S003,S005 | P003,P006 | malformed and duplicate definitions | failure | stable diagnostics | error |
-| T004 | S004 | P002 | invalid UTF-8 bytes | policy split | fatal/warning and byte span | boundary |
-| T005 | S006,S011 | P001,P005 | numeric and resource boundaries | configured outcomes | exact BigInt and codes | boundary |
-| T006 | S007 | P007 | nested semantic tree | stable output | exact text and roundtrip equality | minimal |
-| T007 | S008,S012 | P009 | equality/freeze cases | contract preserved | semantic/order/alias assertions | state |
-| T008 | S009 | P008 | ancestor attach and large integer encode | rejected | exception/diagnostic code | error |
-| T009 | S010 | P001,P007,P008 | tracking streams | success/failure | lifecycle counters unchanged | lifecycle |
-| T010 | S013 | P010 | valid raw edit batch | new revision | exact bytes and reused IDs | incremental |
-| T011 | S014 | P010 | overlap and stale session | failure | no committed mutation | error |
-| T012 | S015 | P011 | manual/derived records | mapped/failure | values and ordered paths | codec |
-| T013 | S016 | P012 | format/lint/schema fixtures | preview | edits, diagnostics, purity | tooling |
+| Test | Scenario | Package/file | Main assertions |
+|---|---|---|---|
+| T001-T008 | S001-S008 | `toml_core_test.cj` | semantic values, mode split, diagnostics, isolation, encode errors |
+| T010-T011 | S010-S011 | `toml_core_test.cj` | exact bytes/IDs/revisions and atomic rejection |
+| T012 | S012 | `src/toml_codec_test.cj` | generated/manual values and ordered errors |
+| T013-T014 | S013-S014 | `toml_core_test.cj` | structured operations, formatting/lint purity |
+| T015-T017 | S015-S017 | `schema_test.cj` | constraints/defaults, refs/budgets, native schema |
+| T018 | S018 | `schema_macro_test.cj` | generated static schema behavior |
+| T019-T020 | S019-S020 | `toml_core_test.cj` | deterministic property and mutation smoke |
+| T021 | S021 | `schema_test.cj` | registry isolation and unknown reference |
+| T022 | S022 | `toml_core_test.cj` | fixed conformance regressions |
+| T023-T025 | S023-S025 | `codec_contract_test.cj` | built-ins, collections, wrappers/provider boundary |
+| T026 | S009 | `toml_core_test.cj` | partial reads, limits, I/O diagnostics, no flush |
 
-## Feedback and gaps
+## Quantitative and external gates
 
-Coverage, mutation, fuzz, and external conformance artifacts are not yet
-provided, so quantitative adequacy claims are evidence-insufficient. Their
-results will be mapped to the IDs above. Platform-specific stream behavior and
-official stable-SDK compatibility remain external confirmation gates.
+- Core production-source line coverage: minimum 70%; local snapshot 70.20%.
+- Schema production-source line coverage: minimum 65%; local snapshot 65.41%.
+- `toml-test` v2.2.0 decoder, TOML 1.1: 214/214 valid and 467/467 invalid.
+- `toml-test` v2.2.0 decoder, TOML 1.0: 205/205 valid and 474/474 invalid.
+
+Coverage is a line-drift gate; optimized core instrumentation and experimental
+branch coverage are not promoted as path proof. The property/mutation cases are
+deterministic smoke tests, not long-duration fuzzing. Hosted CI, official stable
+SDK matrices, supported-platform evidence, and independent encoder
+qualification remain release-candidate gates.

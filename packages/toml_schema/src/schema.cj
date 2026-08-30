@@ -232,7 +232,7 @@ public class TomlSchema {
 
     public func validate(
         value: TomlValue,
-        registry!: TomlSchemaRegistry = TomlSchemaRegistry.empty,
+        registry!: TomlSchemaRegistry = TomlSchemaRegistry.empty(),
         options!: TomlSchemaOptions = TomlSchemaOptions.defaults
     ): TomlSchemaValidation {
         validateTomlSchema(this, value, registry: registry, options: options)
@@ -242,7 +242,7 @@ public class TomlSchema {
     /// mutated, including when validation fails.
     public func validateAndApplyDefaults(
         value: TomlValue,
-        registry!: TomlSchemaRegistry = TomlSchemaRegistry.empty,
+        registry!: TomlSchemaRegistry = TomlSchemaRegistry.empty(),
         options!: TomlSchemaOptions = TomlSchemaOptions.defaults
     ): TomlOutcome<TomlValue> {
         applyTomlSchemaDefaults(this, value, registry: registry, options: options)
@@ -323,7 +323,8 @@ public class TomlSchemaRegistry {
         definitionOrder.clone()
     }
 
-    public static let empty: TomlSchemaRegistry = TomlSchemaRegistry()
+    /// Returns a fresh empty registry. Registries are mutable and are never shared implicitly.
+    public static func empty(): TomlSchemaRegistry { TomlSchemaRegistry() }
 }
 
 public class TomlSchemaValidation {
